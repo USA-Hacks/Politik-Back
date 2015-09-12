@@ -27,7 +27,7 @@ class Viewing(db.Model):
 	id = db.Column(db.Integer, primary_key=True)	
 	user_id = db.Column(db.String(64), db.ForeignKey('user.id'))
 	url = db.Column(db.String(1024))
-	
+		
 	def get_weighted_score(self):
 		return self.ml_score * self.user_score
 
@@ -38,23 +38,22 @@ class PoliticalSite(db.Model):
 	site_url = db.Column(db.String(1024))
 	leaning = db.Column(db.Float)
 
-def get_ml_data(url):
+def get_nlp_data(url):
 	article = Article(url)
 	article.download()
 	article.parse()
 	article.nlp()
 	
 	article = (article.keywords).encode('utf-8').strip()
-	sentences = article.split('\n')	
-	result = 0	
-
-	return results
+	return json.dumps(article)
 
 @app.route('/calc_score', methods=['POST'])
 def calc_score():
 	data = json.loads(request.data)
 	
 	user = db.session.query(User).filter(User.id == data['id']).first()
+	if not user:
+		return jsonify(success=False)		
 	
 	user_score = 0
 	pol_len = 0
@@ -79,7 +78,7 @@ def calc_score():
 	if len(users):
 		metric = metric / len(users)	
 
-	return jsonify(ascore=metric)
+	return jsonify(ascore=metric, kwds=get_nlp_data(data['url']))
 
 @app.route('/store_view', methods=['POST'])
 def store_view():
