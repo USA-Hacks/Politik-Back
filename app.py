@@ -26,11 +26,23 @@ class Viewing(db.Model):
 	
 	def get_weighted_score(self):
 		return self.ml_score * self.user_score
+		
+@app.route('/edit_view', methods=['POST'])
+def edit_view():
+	data = json.loads(request.data)
+	
+	try:
+		view = Viewing.query.filter_by(user_id=data['id']).filter_by(url=data['url']).first()
+	except:
+		return jsonify(success=False)
+		
+	view.user_score = data['score']
+	return jsonify(success=True)
 
 @app.route('/store_view', methods=['POST'])
 def store_view():
 	data = json.loads(request.data)
-
+	
 	if not db.session.query(User).filter(User.id == data['id']).count():
 		new_user = User(data['id'])
 		db.session.add(new_user)
@@ -50,8 +62,11 @@ def store_view():
 
 		db.session.add(new_view)
 		db.session.add(commit)
+	
 
-	return jsonify(success=True)
+		return jsonify(success=True)
+	else:
+		return jsonify(success=False)
 
 @app.route('/calc_leaning', methods=['POST'])
 def calc_leaning():
@@ -61,8 +76,8 @@ def calc_leaning():
 	viewings = Viewing.query.filter_by(user_id=data['id']).all()
 	for viewing in viewings:
 		result += viewing.get_weighted_score()
-	result = result / len(viewings)
-	
+	if len(viewings):
+		result = result / len(viewings)
 	
 	return jsonify(value=result)
 
