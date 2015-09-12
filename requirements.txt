@@ -3,3 +3,4 @@ psycopg2
 Flask-SQLAlchemy
 PredictionIO
 newspaper
+flask-cors

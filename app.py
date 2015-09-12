@@ -1,17 +1,19 @@
 from flask import Flask, request, jsonify
 from flask.ext.sqlalchemy import SQLAlchemy
+from flask.ext.cors import CORS
 from newspaper import Article
 import predictionio
 import json
-
+import math
 
 app = Flask(__name__)
+CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://politik:politik@localhost/politik_db'
 db = SQLAlchemy(app)
 
 class User(db.Model):
 	__tablename__ = "user"
-	id = db.Column(db.String(32), primary_key=True)
+	id = db.Column(db.String(64), primary_key=True)
 	viewings = db.relationship('Viewing', backref='user', lazy='dynamic')
 
 	def __init__(self, id):
@@ -22,40 +24,38 @@ class User(db.Model):
 
 class Viewing(db.Model):
 	__tablename__ = "viewing"
-	user_id = db.Column(db.String(32), db.ForeignKey('user.id'))
+	id = db.Column(db.Integer, primary_key=True)	
+	user_id = db.Column(db.String(64), db.ForeignKey('user.id'))
 	url = db.Column(db.String(1024))
 	user_score = db.Column(db.Integer)
 	ml_score = db.Column(db.Float)
 	
 	def get_weighted_score(self):
 		return self.ml_score * self.user_score
-		
-@app.route('/get_article_body', methods=['POST'])
-def get_article_body():
+
+@app.route('/get_article_leaning', methods=['POST'])
+def get_article_leaning():
 	data = json.loads(request.data)
 
-	article = Article(parse_article(data['url']))
+	results = get_ml_data(data['url'])	
 
-	return jsonify(text=article.text)
+	return jsonify(**results)
 
-def parse_article(url)
+def get_ml_data(url):
 	article = Article(url)
 	article.download()
 	article.parse()
+	article.nlp()
 
-	return article.text
-
-@app.route('/edit_view', methods=['POST'])
-def edit_view():
-	data = json.loads(request.data)
+	article = (article.summary).encode('utf-8').strip()
 	
-	try:
-		view = Viewing.query.filter_by(user_id=data['id']).filter_by(url=data['url']).first()
-	except:
-		return jsonify(success=False)
-		
-	view.user_score = data['score']
-	return jsonify(success=True)
+	ec = predictionio.EngineClient()
+	results = ec.send_query({'text': article})
+
+	if math.isnan(results['confidence']):
+		results['confidence'] = 0
+	
+	return results
 
 @app.route('/store_view', methods=['POST'])
 def store_view():
@@ -66,17 +66,16 @@ def store_view():
 		db.session.add(new_user)
 		db.session.commit()
 
-	view_count = db.session.query(Viewing) \
+	views = db.session.query(Viewing) \
 			.filter(Viewing.url == data['url']) \
-			.filter(Viewing.user_id == data['id']) \
-			.count()
-	ec = predictionio.EngineClient()
-	if not view_count:
+			.filter(Viewing.user_id == data['id'])
+	results = get_ml_data(data['url'])
+	if not views.count():
 		new_view = Viewing()
 		new_view.user_id = data['id']
 		new_view.url = data['url']
-		new_view.user_score = data['score']
-		new_view.ml_score = ec.send_query({'text': parse_article(data['url']) })
+		new_view.user_score = (data['score'] * 2) - 1
+		new_view.ml_score =  resuluts['confidence']
 
 		db.session.add(new_view)
 		db.session.add(commit)
@@ -84,7 +83,9 @@ def store_view():
 
 		return jsonify(success=True)
 	else:
-		return jsonify(success=False)
+		view = views.first()
+		view.user_score = (data['score'] * 2) - 1
+		return jsonify(success=True)
 
 @app.route('/calc_leaning', methods=['POST'])
 def calc_leaning():
