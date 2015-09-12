@@ -1,6 +1,8 @@
 from flask import Flask, request, jsonify
 from flask.ext.sqlalchemy import SQLAlchemy
+from newspaper import Article
 import json
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://localhost/user'
@@ -27,6 +29,16 @@ class Viewing(db.Model):
 	def get_weighted_score(self):
 		return self.ml_score * self.user_score
 		
+@app.route('/get_article_body', methods=['POST'])
+def get_article_body():
+	data = json.loads(request.data)
+
+	article = Article(data['url'])
+	article.download()
+	article.parse()
+
+	return jsonify(text=article.text)
+
 @app.route('/edit_view', methods=['POST'])
 def edit_view():
 	data = json.loads(request.data)
