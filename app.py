@@ -3,9 +3,6 @@ from flask.ext.sqlalchemy import SQLAlchemy
 from flask.ext.cors import CORS
 from newspaper import Article
 import json
-import math
-
-political_keywords = ['iran', 'obama', 'campaign', 'resolution', 'trump', 'republicans', 'democrats', 'bernie', 'election', 'voting', 'polls', 'hillary', 'bush', 'war', 'economy', 'abortion', 'gun', 'rights', 'conservative', 'liberal', 'liberty', 'privacy', 'cruz', 'santorum', 'biden', 'rubio', 'perry', 'israel']
 
 app = Flask(__name__)
 CORS(app)
@@ -47,11 +44,42 @@ def get_ml_data(url):
 	article.parse()
 	article.nlp()
 	
-	article = (article.summary).encode('utf-8').strip()
+	article = (article.keywords).encode('utf-8').strip()
 	sentences = article.split('\n')	
 	result = 0	
 
 	return results
+
+@app.route('/calc_score', methods=['POST'])
+def calc_score():
+	data = json.loads(request.data)
+	
+	user = db.session.query(User).filter(User.id == data['id']).first()
+	
+	user_score = 0
+	pol_len = 0
+	urls = [view.url for view in user.viewings]
+	
+	pols = PoliticalSite.query.all()
+	for pol in pols:
+		for url in urls:
+			if pol.site_url in url:
+				user_score += pol.leaning
+				pol_len += 1
+	if pol_len:
+		user_score = user_score / pol_len
+		user.leaning = user_score
+
+	db.session.commit()
+	
+	users = User.query.filter(User.viewings.any(url=data['url'])).all()
+	metric = 0
+	for user in users:
+		metric += user.leaning
+	if len(users):
+		metric = metric / len(users)	
+
+	return jsonify(ascore=metric)
 
 @app.route('/store_view', methods=['POST'])
 def store_view():
@@ -74,26 +102,7 @@ def store_view():
 		db.session.add(new_view)
 		db.session.commit()
 	
-	user = db.session.query(User).filter(User.id == data['id']).first()
-	
-	user_views = db.session.query(Viewing).filter(Viewing.user_id == user.id).all()
-	user_score = 0
-	pol_len = 0
-	urls = [view.url for view in user_views]
-	
-	pols = PoliticalSite.query.all()
-	for pol in pols:
-		for url in urls:
-			if pol.site_url in url:
-				user_score += pol.leaning
-				pol_len += 1
-	if pol_len:
-		user_score = user_score / pol_len
-		user.leaning = user_score
-	
-	db.session.commit()
-
-	return jsonify(uscore=user_score)
+	return jsonify(success=True)
 
 if __name__ == '__main__':
 	app.debug = True
