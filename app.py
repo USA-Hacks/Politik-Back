@@ -23,6 +23,9 @@ class Viewing(db.Model):
 	url = db.Column(db.String(1024))
 	user_score = db.Column(db.Integer)
 	ml_score = db.Column(db.Float)
+	
+	def get_weighted_score(self):
+		return self.ml_score * self.user_score
 
 @app.route('/store_view', methods=['POST'])
 def store_view():
@@ -50,13 +53,18 @@ def store_view():
 
 	return jsonify(success=True)
 
-@app.route('/calc_leaning')
+@app.route('/calc_leaning', methods=['POST'])
 def calc_leaning():
-	ret = {
-		'leaning': 'Democrat',
-		'score': 1.3
-	}
-	return jsonify(**ret)
+	data = json.loads(request.data)
+	result = 0
+	
+	viewings = Viewing.query.filter_by(user_id=data['id']).all()
+	for viewing in viewings:
+		result += viewing.get_weighted_score()
+	result = result / len(viewings)
+	
+	
+	return jsonify(value=result)
 
 if __name__ == '__main__':
 	app.debug = True
