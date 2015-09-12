@@ -1,6 +1,7 @@
 from flask import Flask, request, jsonify
 from flask.ext.sqlalchemy import SQLAlchemy
 from newspaper import Article
+import predictionio
 import json
 
 
@@ -33,11 +34,16 @@ class Viewing(db.Model):
 def get_article_body():
 	data = json.loads(request.data)
 
-	article = Article(data['url'])
+	article = Article(parse_article(data['url']))
+
+	return jsonify(text=article.text)
+
+def parse_article(url)
+	article = Article(url)
 	article.download()
 	article.parse()
 
-	return jsonify(text=article.text)
+	return article.text
 
 @app.route('/edit_view', methods=['POST'])
 def edit_view():
@@ -64,13 +70,13 @@ def store_view():
 			.filter(Viewing.url == data['url']) \
 			.filter(Viewing.user_id == data['id']) \
 			.count()
-
+	ec = predictionio.EngineClient()
 	if not view_count:
 		new_view = Viewing()
 		new_view.user_id = data['id']
 		new_view.url = data['url']
 		new_view.user_score = data['score']
-		new_view.ml_score = 1 # Needs to be PredictionIO call
+		new_view.ml_score = ec.send_query({'text': parse_article(data['url']) })
 
 		db.session.add(new_view)
 		db.session.add(commit)
