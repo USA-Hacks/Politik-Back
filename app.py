@@ -6,39 +6,13 @@ import json
 
 from ml.naive_bayes import NaiveBayes
 
+from models import User, Viewing, PoliticalSite
+
 app = Flask(__name__)
 CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://politik:politik@localhost/politik_db'
 db = SQLAlchemy(app)
 
-class User(db.Model):
-	__tablename__ = "user"
-	id = db.Column(db.String(64), primary_key=True)
-	viewings = db.relationship('Viewing', backref='user', lazy='dynamic')
-	leaning = db.Column(db.Float)	
-
-	def __init__(self, id):
-		self.id = id
-		self.leaning = 0
-
-	def __repr__(self):
-		return '<User %r>' % self.id
-
-class Viewing(db.Model):
-	__tablename__ = "viewing"
-	id = db.Column(db.Integer, primary_key=True)	
-	user_id = db.Column(db.String(64), db.ForeignKey('user.id'))
-	url = db.Column(db.String(1024))
-		
-	def get_weighted_score(self):
-		return self.ml_score * self.user_score
-
-class PoliticalSite(db.Model):
-	__tablename__ = "political_site"
-
-	id = db.Column(db.Integer, primary_key=True)
-	site_url = db.Column(db.String(1024))
-	leaning = db.Column(db.Float)
 
 def get_nlp_data(url):
 	article = Article(url)
@@ -58,12 +32,6 @@ def get_article_text(url):
 	except:
 		return None
 
-@app.route('/get_keywords', methods=['POST'])
-def get_keywords():
-	data = json.loads(request.data)
-	
-	return jsonify(keywords=get_nlp_data(data['url']))
-
 def get_a_score(a_url):
 	users = User.query.filter(User.viewings.any(url=a_url)).all()
 	metric = 0
@@ -72,6 +40,12 @@ def get_a_score(a_url):
 	if len(users):
 		metric = metric / len(users)
 	return metric
+
+@app.route('/get_keywords', methods=['POST'])
+def get_keywords():
+	data = json.loads(request.data)
+	
+	return jsonify(keywords=get_nlp_data(data['url']))
 
 @app.route('/get_total_score', methods=['POST'])
 def get_total_score():
@@ -83,11 +57,12 @@ def get_total_score():
 	else:
 		user = user.one()	
 	
+	# Return Core User Group here
 	if abs(user.leaning) > 0.25:
 		return jsonify(score=user.leaning)
-	views = user.viewings
+
 	metric = 0
-	for view in views:
+	for view in user.viewings:
 		metric += get_a_score(view.url)
 	return jsonify(score=metric)		
 
@@ -101,9 +76,8 @@ def calc_score():
 		nb = NaiveBayes()
 		leaning = nb.get_leaning(text)
 	'''
-	leaning = 'Neutral'
 
-	return jsonify(ascore=metric, lean=leaning)
+	return jsonify(ascore=metric)
 
 @app.route('/store_view', methods=['POST'])
 def store_view():
