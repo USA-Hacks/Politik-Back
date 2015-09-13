@@ -4,6 +4,8 @@ from flask.ext.cors import CORS
 from newspaper import Article
 import json
 
+from ml.naive_bayes import NaiveBayes
+
 app = Flask(__name__)
 CORS(app)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'postgresql://politik:politik@localhost/politik_db'
@@ -46,25 +48,62 @@ def get_nlp_data(url):
 	
 	return json.dumps(article.keywords)
 
+def get_article_text(url):
+	try:
+		article = Article(url)
+		article.download()
+		article.parse()
+	
+		return article.text
+	except:
+		return None
+
 @app.route('/get_keywords', methods=['POST'])
 def get_keywords():
 	data = json.loads(request.data)
 	
 	return jsonify(keywords=get_nlp_data(data['url']))
+
+def get_a_score(a_url):
+	users = User.query.filter(User.viewings.any(url=a_url)).all()
+	metric = 0
+	for user in users:
+		metric += user.leaning
+	if len(users):
+		metric = metric / len(users)
+	return metric
+
+@app.route('/get_total_score', methods=['POST'])
+def get_total_score():
+	data = json.loads(request.data)
+
+	user = db.session.query(User).filter(User.id == data['id'])	
+	if not user.count():
+		return jsonify(success=False)
+	else:
+		user = user.one()	
 	
+	if abs(user.leaning) > 0.25:
+		return jsonify(score=user.leaning)
+	views = user.viewings
+	metric = 0
+	for view in views:
+		metric += get_a_score(view.url)
+	return jsonify(score=metric)		
 
 @app.route('/calc_score', methods=['POST'])
 def calc_score():
 	data = json.loads(request.data)
 	
-	users = User.query.filter(User.viewings.any(url=data['url'])).all()
-	metric = 0
-	for user in users:
-		metric += user.leaning
-	if len(users):
-		metric = metric / len(users)	
+	metric = get_a_score(data['url'])	
+	'''text = get_article_text(data['url'])
+	if text != None:
+		nb = NaiveBayes()
+		leaning = nb.get_leaning(text)
+	'''
+	leaning = 'Neutral'
 
-	return jsonify(ascore=metric)
+	return jsonify(ascore=metric, lean=leaning)
 
 @app.route('/store_view', methods=['POST'])
 def store_view():
