@@ -44,32 +44,18 @@ def get_nlp_data(url):
 	article.parse()
 	article.nlp()
 	
-	article = (article.keywords).encode('utf-8').strip()
-	return json.dumps(article)
+	return json.dumps(article.keywords)
+
+@app.route('/get_keywords', methods=['POST'])
+def get_keywords():
+	data = json.loads(request.data)
+	
+	return jsonify(keywords=get_nlp_data(data['url']))
+	
 
 @app.route('/calc_score', methods=['POST'])
 def calc_score():
 	data = json.loads(request.data)
-	
-	user = db.session.query(User).filter(User.id == data['id']).first()
-	if not user:
-		return jsonify(success=False)		
-	
-	user_score = 0
-	pol_len = 0
-	urls = [view.url for view in user.viewings]
-	
-	pols = PoliticalSite.query.all()
-	for pol in pols:
-		for url in urls:
-			if pol.site_url in url:
-				user_score += pol.leaning
-				pol_len += 1
-	if pol_len:
-		user_score = user_score / pol_len
-		user.leaning = user_score
-
-	db.session.commit()
 	
 	users = User.query.filter(User.viewings.any(url=data['url'])).all()
 	metric = 0
@@ -78,7 +64,7 @@ def calc_score():
 	if len(users):
 		metric = metric / len(users)	
 
-	return jsonify(ascore=metric, kwds=get_nlp_data(data['url']))
+	return jsonify(ascore=metric)
 
 @app.route('/store_view', methods=['POST'])
 def store_view():
@@ -100,7 +86,28 @@ def store_view():
 
 		db.session.add(new_view)
 		db.session.commit()
+
 	
+	user = db.session.query(User).filter(User.id == data['id']).first()
+	if not user:
+		return jsonify(success=False)		
+	
+	user_score = 0
+	pol_len = 0
+	urls = [view.url for view in user.viewings]
+	
+	pols = PoliticalSite.query.all()
+	for pol in pols:
+		for url in urls:
+			if pol.site_url in url:
+				user_score += pol.leaning
+				pol_len += 1
+	if pol_len:
+		user_score = user_score / pol_len
+		user.leaning = user_score
+
+	db.session.commit()
+
 	return jsonify(success=True)
 
 if __name__ == '__main__':
